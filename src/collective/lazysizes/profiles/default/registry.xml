@@ -12,4 +12,10 @@
     <field type="plone.registry.field.List" />
     <value>[]</value>
   </record>
+  
+    <record name="collective.lazysizes.interfaces.ILazySizesSettings.use_thumbs"
+      interface="collective.lazysizes.interfaces.ILazySizesSettings"
+      field="use_thumbs">
+    <value></value>
+  </record>
 </registry>

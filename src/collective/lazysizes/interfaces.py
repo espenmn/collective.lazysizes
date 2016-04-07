@@ -23,6 +23,13 @@ class ILazySizesSettings(form.Schema):
         value_type=schema.Choice(
             vocabulary=u'collective.lazysizes.ImageScales'),
     )
+    
+	use_thumb = schema.Bool(
+        title=_(u'Use thumb'),
+        description=_(
+            u'Use thumb image, or just use grey background.'),
+        required=True,
+    )
 
     form.widget('css_class_blacklist', cols=25, rows=10)
     css_class_blacklist = schema.Set(
