@@ -1,0 +1,47 @@
+<configure
+    xmlns="http://namespaces.zope.org/zope"
+    xmlns:plone="http://namespaces.plone.org/plone"
+    xmlns:browser="http://namespaces.zope.org/browser"
+    xmlns:five="http://namespaces.zope.org/five"
+    xmlns:i18n="http://namespaces.zope.org/i18n"
+    i18n_domain="collective.lazysizes">
+
+  <five:registerPackage package="." />
+
+  <permission
+      id="collective.lazysizes.Setup"
+      title="collective.lazysizes: Setup"
+      />
+
+  <include file="profiles.zcml" />
+  
+  <plone:behavior
+        title="Lazysizeable"
+        description="Enable images to be lazy loaded with javascript."
+        provides="collective.lazysizes.behaviors.ILazyableBehaviorLayer"
+        for="plone.dexterity.interfaces.IDexterityContent"
+    />
+
+  <browser:page
+      name="lazysizes-settings"
+      for="Products.CMFPlone.interfaces.IPloneSiteRoot"
+      class=".controlpanel.LazySizesSettingsControlPanel"
+      permission="collective.lazysizes.Setup"
+      />
+
+  <browser:resourceDirectory
+      name="collective.lazysizes"
+      directory="static"
+      layer="collective.lazysizes.interfaces.ILazySizesLayer"
+      />
+
+
+  <utility
+      provides="zope.schema.interfaces.IVocabularyFactory"
+      component=".vocabularies.ImageScalesVocabulary"
+      name="collective.lazysizes.ImageScales"
+      />
+      
+  <include package=".overrides" />
+
+</configure>
