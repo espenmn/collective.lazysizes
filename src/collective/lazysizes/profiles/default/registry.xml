@@ -13,9 +13,9 @@
     <value>[]</value>
   </record>
   
-    <record name="collective.lazysizes.interfaces.ILazySizesSettings.use_thumbs"
+    <record name="collective.lazysizes.interfaces.ILazySizesSettings.use_thumb"
       interface="collective.lazysizes.interfaces.ILazySizesSettings"
-      field="use_thumbs">
-    <value></value>
+      field="use_thumb">
+    <field type="plone.registry.field.Bool"></field>
   </record>
 </registry>

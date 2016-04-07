@@ -21,6 +21,7 @@ from zope.publisher.interfaces import IPublishTraverse
 from zope.publisher.interfaces import NotFound
 from zope.traversing.interfaces import ITraversable
 from zope.traversing.interfaces import TraversalError
+from zope.interface import implements
 
 import pkg_resources
 
@@ -72,6 +73,7 @@ class ImageScale(BrowserView):
             css_class=None, title=_marker, **kwargs):
         """Create a tag including scale
         """
+
         if height is _marker:
             height = getattr(self, 'height', self.data._height)
         if width is _marker:
@@ -91,15 +93,10 @@ class ImageScale(BrowserView):
         
         blacklist    = api.portal.get_registry_record('collective.lazysizes.interfaces.ILazySizesSettings.css_class_blacklist')
         image_candidates = api.portal.get_registry_record('collective.lazysizes.interfaces.ILazySizesSettings.image_candidates')
-        use_thumb = True
-        #api.portal.get_registry_record('collective.lazysizes.interfaces.ILazySizesSettings.use_thumb')
+        use_thumb = api.portal.get_registry_record('collective.lazysizes.interfaces.ILazySizesSettings.use_thumb')
 
         small_image = self.url
-        
-        if not use_thumb:
-            portal_url = api.portal.get().absolute_url()
-            small_image =  portal_url + "/++resource++collective.lazysizes/blank.png"
-            
+
         #need to find which scale was used, can not find it anywere
         #the scale is present in the html, not sure where they got it from
         #so we could replace srcand data-src in transform.py if everything else fails.
@@ -112,9 +109,15 @@ class ImageScale(BrowserView):
         item_url = self.context.absolute_url() 
         
         if css_class not in str(blacklist):
-            small_image = item_url + '/@@images/' + self.fieldname + '/thumb'   
             css_class += ' lazyload'
-        
+            portal_url = api.portal.get().absolute_url()
+            small_image =  portal_url + "/++resource++collective.lazysizes/blank.png"
+
+            if use_thumb:
+                small_image = item_url + '/@@images/' + self.fieldname + '/thumb'   
+            
+        #not sure if we should add  this to all images, or maybe use a 'retina' setting
+        #maybe we coould use a list and 'move every size up a scale mini 1x => preview 2x
         base_url = item_url + '/@@images/' + self.fieldname 
         sizes = "(min-width: 1000px) 930px, 90vw"
         data_srcset = base_url + "/mini  500w, " + base_url +  "/preview 640w, " + base_url +  "/large 1024w"
@@ -180,15 +183,15 @@ class ImageScale(BrowserView):
     HEAD.__roles__ = ('Anonymous',)
 
 
-@implementer(ITraversable)
 class ImmutableTraverser(object):
+    implements(ITraversable)
 
     def __init__(self, scale):
         self.scale = scale
 
     def traverse(self, name, furtherPath):
         if furtherPath:
-            raise TraversalError('Do not know how to handle further path')
+            raise TraversalError("Do not know how to handle further path")
         else:
             if self.scale:
                 return self.scale.tag()
@@ -196,9 +199,9 @@ class ImmutableTraverser(object):
                 raise TraversalError(name)
 
 
-@implementer(ITraversable, IPublishTraverse)
 class ImageScaling(BrowserView):
     """ view used for generating (and storing) image scales """
+    implements(ITraversable, IPublishTraverse)
     # Ignore some stacks to help with accessing via webdav, otherwise you get a
     # 404 NotFound error.
     _ignored_stacks = ('manage_DAVget', 'manage_FTPget')
@@ -295,21 +298,17 @@ class ImageScaling(BrowserView):
                height=None,
                width=None,
                **parameters):
-        """Factory for image scales, see `IImageScaleStorage.scale`.
-        """
-        
-        import pdb; pdb.settrace()
+        """ factory for image scales, see `IImageScaleStorage.scale` """
         orig_value = getattr(self.context, fieldname)
         if orig_value is None:
             return
 
         if height is None and width is None:
-            _, format_ = orig_value.contentType.split('/', 1)
-            return None, format_, (orig_value._width, orig_value._height)
-        orig_data = None
-        try:
+            _, format = orig_value.contentType.split('/', 1)
+            return None, format, (orig_value._width, orig_value._height)
+        if hasattr(aq_base(orig_value), 'open'):
             orig_data = orig_value.open()
-        except AttributeError:
+        else:
             orig_data = getattr(aq_base(orig_value), 'data', orig_value)
         if not orig_data:
             return
@@ -341,19 +340,24 @@ class ImageScaling(BrowserView):
                       orig_value, self.context.absolute_url())
             return
         if result is not None:
-            data, format_, dimensions = result
-            mimetype = u'image/{0}'.format(format_.lower())
+            data, format, dimensions = result
+            mimetype = 'image/%s' % format.lower()
             value = orig_value.__class__(
                 data, contentType=mimetype, filename=orig_value.filename)
             value.fieldname = fieldname
-            return value, format_, dimensions
+            return value, format, dimensions
 
     def modified(self):
-        """Provide a callable to return the modification time of content
-        items, so stored image scales can be invalidated.
-        """
+        """ provide a callable to return the modification time of content
+            items, so stored image scales can be invalidated """
         context = aq_base(self.context)
-        date = DateTime(context._p_mtime)
+        try:
+            if hasattr(context, 'modified') and callable(context.modified):
+                date = context.modified()
+            else:
+                date = DateTime(context._p_mtime)
+        except AttributeError:
+            date = self.context.modified().millis()
         return date.millis()
 
     def scale(self,
@@ -367,12 +371,35 @@ class ImageScaling(BrowserView):
             fieldname = IPrimaryFieldInfo(self.context).fieldname
         if scale is not None:
             available = self.getAvailableSizes(fieldname)
-            if scale not in available:
+            if not scale in available:
                 return None
             width, height = available[scale]
 
-        if IDisableCSRFProtection and self.request is not None:
+        if self.request is not None:
             alsoProvides(self.request, IDisableCSRFProtection)
+
+        storage = AnnotationStorage(self.context, self.modified)
+        info = storage.scale(factory=self.create,
+                             fieldname=fieldname,
+                             height=height,
+                             width=width,
+                             direction=direction,
+                             **parameters)
+
+        if info is not None:
+            info['fieldname'] = fieldname
+            scale_view = ImageScale(self.context, self.request, **info)
+            return scale_view.__of__(self.context)
+
+    def tag(self,
+            fieldname=None,
+            scale=None,
+            height=None,
+            width=None,
+            direction='thumbnail',
+            **kwargs):
+        scale = self.scale(fieldname, scale, height, width, direction)
+        return scale.tag(**kwargs) if scale else None
 
         storage = AnnotationStorage(self.context, self.modified)
         info = storage.scale(factory=self.create,
