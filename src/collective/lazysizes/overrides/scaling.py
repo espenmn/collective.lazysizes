@@ -56,8 +56,6 @@ class ImageScale(NImageScale):
             css_class=None, title=_marker, **kwargs):
         """Create a tag including scale
         """
-        import pdb; pdb.set_trace()
-
         if height is _marker:
             height = getattr(self, 'height', self.data._height)
         if width is _marker:
