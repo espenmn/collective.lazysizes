@@ -25,6 +25,7 @@ from zope.interface import implements
 
 import pkg_resources
 
+from plone.namedfile.scaling import ImageScale as NImageScale
 from plone import api
 from collective.lazysizes.interfaces import ILazySizesSettings
 
@@ -40,7 +41,7 @@ else:
 _marker = object()
 
 
-class ImageScale(BrowserView):
+class ImageScale(NImageScale):
     """ view used for rendering image scales """
 
     # Grant full access to this view even if the object being viewed is
@@ -99,14 +100,18 @@ class ImageScale(BrowserView):
 
         #need to find which scale was used, can not find it anywere
         #the scale is present in the html, not sure where they got it from
-        #so we could replace srcand data-src in transform.py if everything else fails.
+        #so we could replace src and data-src in transform.py if everything else fails.
         #scale= 'large'
         
         # 'not in' is probably not good enough, will 'equal' classes that are partly the same (?) 
         # using tuple or list in control panel might be better ?       
-        #if blacklist not in css_class and scale in image_candidates:
-        css_class = str(css_class)
+        if not css_class:
+            css_class = '  
+            #two spaces so it is not in blacklist...'
+            
         item_url = self.context.absolute_url() 
+        
+        import pdb; pdb.set_trace()
         
         if css_class not in str(blacklist):
             css_class += ' lazyload'

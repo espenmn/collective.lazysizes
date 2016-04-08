@@ -1,2 +1,16 @@
 
 *.pyc
+
+src/collective.lazysizes.egg-info/top_level.txt
+
+src/collective.lazysizes.egg-info/requires.txt
+
+src/collective.lazysizes.egg-info/not-zip-safe
+
+src/collective.lazysizes.egg-info/namespace_packages.txt
+
+src/collective.lazysizes.egg-info/PKG-INFO
+
+src/collective.lazysizes.egg-info/dependency_links.txt
+
+src/collective.lazysizes.egg-info/SOURCES.txt
