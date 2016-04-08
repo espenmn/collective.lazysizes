@@ -25,7 +25,8 @@ from zope.interface import implements
 
 import pkg_resources
 
-from plone.namedfile.scaling import ImageScale as NImageScale
+from plone.namedfile.scaling import ImageScale as NImageScale 
+
 from plone import api
 from collective.lazysizes.interfaces import ILazySizesSettings
 
@@ -40,7 +41,6 @@ else:
 
 _marker = object()
 
-
 class ImageScale(NImageScale):
     """ view used for rendering image scales """
 
@@ -51,29 +51,12 @@ class ImageScale(NImageScale):
     __roles__ = ('Anonymous',)
     __allow_access_to_unprotected_subobjects__ = 1
 
-    def __init__(self, context, request, **info):
-        self.context = context
-        self.request = request
-        self.__dict__.update(**info)
-        if self.data is None:
-            self.data = getattr(self.context, self.fieldname)
-
-        url = self.context.absolute_url()
-        extension = self.data.contentType.split('/')[-1].lower()
-        if 'uid' in info:
-            name = info['uid']
-        else:
-            name = info['fieldname']
-        self.__name__ = u'{0}.{1}'.format(name, extension)
-        self.url = u'{0}/@@images/{1}'.format(url, self.__name__)
-
-    def absolute_url(self):
-        return self.url
-
+        
     def tag(self, height=_marker, width=_marker, alt=_marker,
             css_class=None, title=_marker, **kwargs):
         """Create a tag including scale
         """
+        import pdb; pdb.set_trace()
 
         if height is _marker:
             height = getattr(self, 'height', self.data._height)
@@ -106,13 +89,10 @@ class ImageScale(NImageScale):
         # 'not in' is probably not good enough, will 'equal' classes that are partly the same (?) 
         # using tuple or list in control panel might be better ?       
         if not css_class:
-            css_class = '  
-            #two spaces so it is not in blacklist...'
+            css_class = '  '
             
         item_url = self.context.absolute_url() 
-        
-        import pdb; pdb.set_trace()
-        
+
         if css_class not in str(blacklist):
             css_class += ' lazyload'
             portal_url = api.portal.get().absolute_url()
@@ -154,49 +134,25 @@ class ImageScale(NImageScale):
         
         return u' '.join(parts)
 
-    def validate_access(self):
-        fieldname = getattr(self.data, 'fieldname',
-                            getattr(self, 'fieldname', None))
-        guarded_getattr(self.context, fieldname)
-
-    def index_html(self):
-        """ download the image """
-        self.validate_access()
-        set_headers(self.data, self.request.response)
-        return stream_data(self.data)
-
-    def manage_DAVget(self):
-        """Get scale via webdav."""
-        return self.manage_FTPget()
-
-    def manage_FTPget(self):
-        """Get scale via ftp."""
-        return self.index_html()
-
-    def __call__(self):
-        # avoid the need to prefix with nocall: in TAL
-        return self
-
-    def HEAD(self, REQUEST, RESPONSE=None):
-        """ Obtain metainformation about the image implied by the request
-            without transfer of the image itself
-        """
-        self.validate_access()
-        set_headers(self.data, REQUEST.response)
-        return ''
-
-    HEAD.__roles__ = ('Anonymous',)
 
 
+
+
+
+
+
+#should be possible to import rest of the file, 
+#not sure why it does not work
+
+@implementer(ITraversable)
 class ImmutableTraverser(object):
-    implements(ITraversable)
 
     def __init__(self, scale):
         self.scale = scale
 
     def traverse(self, name, furtherPath):
         if furtherPath:
-            raise TraversalError("Do not know how to handle further path")
+            raise TraversalError('Do not know how to handle further path')
         else:
             if self.scale:
                 return self.scale.tag()
@@ -204,9 +160,9 @@ class ImmutableTraverser(object):
                 raise TraversalError(name)
 
 
+@implementer(ITraversable, IPublishTraverse)
 class ImageScaling(BrowserView):
     """ view used for generating (and storing) image scales """
-    implements(ITraversable, IPublishTraverse)
     # Ignore some stacks to help with accessing via webdav, otherwise you get a
     # 404 NotFound error.
     _ignored_stacks = ('manage_DAVget', 'manage_FTPget')
@@ -303,17 +259,19 @@ class ImageScaling(BrowserView):
                height=None,
                width=None,
                **parameters):
-        """ factory for image scales, see `IImageScaleStorage.scale` """
+        """Factory for image scales, see `IImageScaleStorage.scale`.
+        """
         orig_value = getattr(self.context, fieldname)
         if orig_value is None:
             return
 
         if height is None and width is None:
-            _, format = orig_value.contentType.split('/', 1)
-            return None, format, (orig_value._width, orig_value._height)
-        if hasattr(aq_base(orig_value), 'open'):
+            _, format_ = orig_value.contentType.split('/', 1)
+            return None, format_, (orig_value._width, orig_value._height)
+        orig_data = None
+        try:
             orig_data = orig_value.open()
-        else:
+        except AttributeError:
             orig_data = getattr(aq_base(orig_value), 'data', orig_value)
         if not orig_data:
             return
@@ -345,24 +303,19 @@ class ImageScaling(BrowserView):
                       orig_value, self.context.absolute_url())
             return
         if result is not None:
-            data, format, dimensions = result
-            mimetype = 'image/%s' % format.lower()
+            data, format_, dimensions = result
+            mimetype = u'image/{0}'.format(format_.lower())
             value = orig_value.__class__(
                 data, contentType=mimetype, filename=orig_value.filename)
             value.fieldname = fieldname
-            return value, format, dimensions
+            return value, format_, dimensions
 
     def modified(self):
-        """ provide a callable to return the modification time of content
-            items, so stored image scales can be invalidated """
+        """Provide a callable to return the modification time of content
+        items, so stored image scales can be invalidated.
+        """
         context = aq_base(self.context)
-        try:
-            if hasattr(context, 'modified') and callable(context.modified):
-                date = context.modified()
-            else:
-                date = DateTime(context._p_mtime)
-        except AttributeError:
-            date = self.context.modified().millis()
+        date = DateTime(context._p_mtime)
         return date.millis()
 
     def scale(self,
@@ -376,35 +329,12 @@ class ImageScaling(BrowserView):
             fieldname = IPrimaryFieldInfo(self.context).fieldname
         if scale is not None:
             available = self.getAvailableSizes(fieldname)
-            if not scale in available:
+            if scale not in available:
                 return None
             width, height = available[scale]
 
-        if self.request is not None:
+        if IDisableCSRFProtection and self.request is not None:
             alsoProvides(self.request, IDisableCSRFProtection)
-
-        storage = AnnotationStorage(self.context, self.modified)
-        info = storage.scale(factory=self.create,
-                             fieldname=fieldname,
-                             height=height,
-                             width=width,
-                             direction=direction,
-                             **parameters)
-
-        if info is not None:
-            info['fieldname'] = fieldname
-            scale_view = ImageScale(self.context, self.request, **info)
-            return scale_view.__of__(self.context)
-
-    def tag(self,
-            fieldname=None,
-            scale=None,
-            height=None,
-            width=None,
-            direction='thumbnail',
-            **kwargs):
-        scale = self.scale(fieldname, scale, height, width, direction)
-        return scale.tag(**kwargs) if scale else None
 
         storage = AnnotationStorage(self.context, self.modified)
         info = storage.scale(factory=self.create,
