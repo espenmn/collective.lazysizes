@@ -25,7 +25,9 @@ from zope.interface import implements
 
 import pkg_resources
 
+from plone.namedfile.scaling import ImageScaling as NImageScaling 
 from plone.namedfile.scaling import ImageScale as NImageScale 
+from plone.namedfile.scaling import ImmutableTraverser
 
 from plone import api
 from collective.lazysizes.interfaces import ILazySizesSettings
@@ -133,33 +135,7 @@ class ImageScale(NImageScale):
         return u' '.join(parts)
 
 
-
-
-
-
-
-
-#should be possible to import rest of the file, 
-#not sure why it does not work
-
-@implementer(ITraversable)
-class ImmutableTraverser(object):
-
-    def __init__(self, scale):
-        self.scale = scale
-
-    def traverse(self, name, furtherPath):
-        if furtherPath:
-            raise TraversalError('Do not know how to handle further path')
-        else:
-            if self.scale:
-                return self.scale.tag()
-            else:
-                raise TraversalError(name)
-
-
-@implementer(ITraversable, IPublishTraverse)
-class ImageScaling(BrowserView):
+class ImageScaling(NImageScaling):
     """ view used for generating (and storing) image scales """
     # Ignore some stacks to help with accessing via webdav, otherwise you get a
     # 404 NotFound error.
@@ -195,126 +171,6 @@ class ImageScaling(BrowserView):
             return image
         raise NotFound(self, name, self.request)
 
-    def traverse(self, name, furtherPath):
-        """ used for path traversal, i.e. in zope page templates """
-        # validate access
-        value = self.guarded_orig_image(name)
-        if not furtherPath:
-            image = ImageScale(
-                self.context, self.request, data=value, fieldname=name)
-        else:
-            return ImmutableTraverser(self.scale(name, furtherPath[-1]))
-
-        if image is not None:
-            return image.tag()
-        raise TraversalError(self, name)
-
-    _sizes = {}
-
-    def getAvailableSizes(self, fieldname=None):
-        # fieldname is ignored by default
-        getAvailableSizes = queryUtility(IAvailableSizes)
-        if getAvailableSizes is None:
-            return self._sizes
-        sizes = getAvailableSizes()
-        if sizes is None:
-            return {}
-        return sizes
-
-    def _set_sizes(self, value):
-        self._sizes = value
-
-    available_sizes = property(getAvailableSizes, _set_sizes)
-
-    def getImageSize(self, fieldname=None):
-        if fieldname is not None:
-            value = self.guarded_orig_image(fieldname)
-            if value is None:
-                return (0, 0)
-            return value.getImageSize()
-        value = IPrimaryFieldInfo(self.context).value
-        return value.getImageSize()
-
-    def guarded_orig_image(self, fieldname):
-        return guarded_getattr(self.context, fieldname, None)
-
-    def getQuality(self):
-        """Get plone.app.imaging's quality setting"""
-        # Avoid dependening on version where interface first
-        # appeared.
-        try:
-            from plone.scale.interfaces import IScaledImageQuality
-        except ImportError:
-            return None
-        getScaledImageQuality = queryUtility(IScaledImageQuality)
-        if getScaledImageQuality is None:
-            return None
-        return getScaledImageQuality()
-
-    def create(self,
-               fieldname,
-               direction='thumbnail',
-               height=None,
-               width=None,
-               **parameters):
-        """Factory for image scales, see `IImageScaleStorage.scale`.
-        """
-        orig_value = getattr(self.context, fieldname)
-        if orig_value is None:
-            return
-
-        if height is None and width is None:
-            _, format_ = orig_value.contentType.split('/', 1)
-            return None, format_, (orig_value._width, orig_value._height)
-        orig_data = None
-        try:
-            orig_data = orig_value.open()
-        except AttributeError:
-            orig_data = getattr(aq_base(orig_value), 'data', orig_value)
-        if not orig_data:
-            return
-
-        # Handle cases where large image data is stored in FileChunks instead
-        # of plain string
-        if isinstance(orig_data, FileChunk):
-            # Convert data to 8-bit string
-            # (FileChunk does not provide read() access)
-            orig_data = str(orig_data)
-
-        # If quality wasn't in the parameters, try the site's default scaling
-        # quality if it exists.
-        if 'quality' not in parameters:
-            quality = self.getQuality()
-            if quality:
-                parameters['quality'] = quality
-
-        try:
-            result = scaleImage(orig_data,
-                                direction=direction,
-                                height=height,
-                                width=width,
-                                **parameters)
-        except (ConflictError, KeyboardInterrupt):
-            raise
-        except Exception:
-            exception('could not scale "%r" of %r',
-                      orig_value, self.context.absolute_url())
-            return
-        if result is not None:
-            data, format_, dimensions = result
-            mimetype = u'image/{0}'.format(format_.lower())
-            value = orig_value.__class__(
-                data, contentType=mimetype, filename=orig_value.filename)
-            value.fieldname = fieldname
-            return value, format_, dimensions
-
-    def modified(self):
-        """Provide a callable to return the modification time of content
-        items, so stored image scales can be invalidated.
-        """
-        context = aq_base(self.context)
-        date = DateTime(context._p_mtime)
-        return date.millis()
 
     def scale(self,
               fieldname=None,
@@ -347,12 +203,4 @@ class ImageScaling(BrowserView):
             scale_view = ImageScale(self.context, self.request, **info)
             return scale_view.__of__(self.context)
 
-    def tag(self,
-            fieldname=None,
-            scale=None,
-            height=None,
-            width=None,
-            direction='thumbnail',
-            **kwargs):
-        scale = self.scale(fieldname, scale, height, width, direction)
-        return scale.tag(**kwargs) if scale else None
+
