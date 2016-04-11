@@ -104,8 +104,8 @@ class ImageScale(NImageScale):
         #not sure if we should add  this to all images, or maybe use a 'retina' setting
         #maybe we coould use a list and 'move every size up a scale mini 1x => preview 2x
         base_url = item_url + '/@@images/' + self.fieldname 
-        sizes = "(min-width: 1000px) 930px, 90vw"
-        data_srcset = base_url + "/mini  500w, " + base_url +  "/preview 640w, " + base_url +  "/large 1024w"
+        sizes = "(min-width: 1000px) 768px, 90vw"
+        data_srcset = base_url + "/preview  400w, " + base_url +  "/large 640w, "
 
         values = [
             ('src', small_image),
